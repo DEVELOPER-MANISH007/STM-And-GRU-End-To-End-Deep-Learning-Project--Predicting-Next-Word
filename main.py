@@ -69,17 +69,45 @@ def prepare_input(tokenizer, text, input_length):
     return token_ids, model_token_ids, padded_sequence
 
 
-def predict_next_word(model, tokenizer, text, input_length):
-    token_ids, model_token_ids, padded_sequence = prepare_input(
-        tokenizer, text, input_length
-    )
-    if not model_token_ids:
-        return None, token_ids, model_token_ids, padded_sequence
 
-    scores = model.predict(padded_sequence, verbose=0)
-    predicted_index = int(np.argmax(scores, axis=1)[0])
-    predicted_word = tokenizer.index_word.get(predicted_index)
-    return predicted_word, token_ids, model_token_ids, padded_sequence
+def predict_next_word(model, tokenizer, text, input_length, max_new_words=30):
+    current_text = text.strip()
+    generated_words = []
+
+    token_ids = []
+    model_token_ids = []
+    padded_sequence = None
+
+    for _ in range(max_new_words):
+        token_ids, model_token_ids, padded_sequence = prepare_input(
+            tokenizer, current_text, input_length
+        )
+
+        if not model_token_ids:
+            break
+
+        scores = model.predict(padded_sequence, verbose=0)
+        predicted_index = int(np.argmax(scores, axis=1)[0])
+        predicted_word = tokenizer.index_word.get(predicted_index)
+
+        if not predicted_word:
+            break
+
+        generated_words.append(predicted_word)
+        current_text = f"{current_text} {predicted_word}".strip()
+
+        # Stop when the model generates sentence-ending punctuation.
+        if predicted_word.endswith((".", "!", "?")):
+            break
+
+    generated_text = " ".join(generated_words)
+
+    return (
+        generated_text or None,
+        token_ids,
+        model_token_ids,
+        padded_sequence,
+    )
 
 
 def clear_current_input():
@@ -604,7 +632,7 @@ with st.container(key="prediction-studio"):
             )
 
     run_prediction = st.button(
-        "Predict Next Word",
+        "Complete Sentence",
         key="predict-next-word",
         type="primary",
         icon=":material/arrow_forward:",
@@ -674,7 +702,7 @@ if prediction:
     with st.container(key="result-card"):
         st.caption(f'Original input · {prediction["input"]}')
         st.markdown(
-            f'<div class="micro-label">NEXT WORD</div>'
+            f'<div class="micro-label">GENERATED CONTINUATION</div>'
             f'<div class="result-word">{html.escape(prediction["word"])}</div>',
             unsafe_allow_html=True,
         )
